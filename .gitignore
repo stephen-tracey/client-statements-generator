@@ -1,0 +1,20 @@
+# Client data - never commit (any CSV in the main folder; branding/provider.csv is provider details and is kept)
+/*.csv
+
+# Provider logo - each provider adds their own
+branding/logo.png
+branding/logo.jpg
+branding/logo.jpeg
+
+# Generated output - contains client details, recreated on every run
+statements/*
+!statements/.gitkeep
+
+# Generated test data (python tests/make_test_data.py)
+tests/data/
+
+# Superseded PySide6 app and HTTPS dashboard server (kept locally only)
+old/
+
+__pycache__/
+*.pyc
