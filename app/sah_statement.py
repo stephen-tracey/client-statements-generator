@@ -88,16 +88,19 @@ def chart(title,labels,values,cols,w=CW*0.46,h=58*mm):
 
 HDR=20*mm   # header bar height (all pages)
 def header(c,first=False):
-    """Thin grey bar: provider name, address and contacts on the left (or 'Support at Home' if there's no
-    provider.csv), provider logo (square) on the right."""
-    c.setFillColor(GREY); c.rect(0,H-HDR,W,HDR,0,1)
+    """Thin bar (grey, or bg_colour from provider.csv): provider name, address and contacts on the left
+    (or 'Support at Home' if there's no provider.csv), provider logo (square) on the right."""
+    c.setFillColor(GREY if PROVIDER is None or PROVIDER["bg"] is None else PROVIDER["bg"]); c.rect(0,H-HDR,W,HDR,0,1)
     s=HDR-4*mm
     if PROVIDER: provider_block(c,LM,W-RM-(s+6*mm if LOGO else 0))
     else:
         c.setFillColor(BLUE); c.setFont("Helvetica-Bold",17); c.drawString(LM,H-HDR/2-1*mm,"Support")
         c.setFillColor(PURPLE); c.setFont("Helvetica",17); c.drawString(LM+c.stringWidth("Support ","Helvetica-Bold",17),H-HDR/2-1*mm,"at Home")
     if LOGO:
-        c.drawImage(LOGO,W-RM-s,H-HDR+2*mm,width=s,height=s,preserveAspectRatio=True,anchor="e",mask="auto")
+        x,y,pad=W-RM-s,H-HDR+2*mm,0
+        if PROVIDER and PROVIDER["bg"] is not None:   # coloured bar: white tile so the logo stays readable
+            c.setFillColor(colors.white); c.roundRect(x,y,s,s,1.5*mm,stroke=0,fill=1); pad=1.2*mm
+        c.drawImage(LOGO,x+pad,y+pad,width=s-2*pad,height=s-2*pad,preserveAspectRatio=True,anchor="e",mask="auto")
     if first:
         for i,cl in enumerate(["#8068A0","#93B3D3","#7BBDBD","#8E5BA8","#4FA8A8","#00539B","#221A4C"]):
             c.setFillColor(colors.HexColor(cl)); c.rect(i*W/7,H-HDR-2.5*mm,W/7,2.5*mm,0,1)
@@ -107,7 +110,8 @@ def provider_block(c,left,right):
     p=PROVIDER; addr=", ".join(x for x in(p["addr1"],p["addr2"],p["addr3"]) if x)
     contact="   ".join(x for x in(p["phone"] and "Phone "+p["phone"],p["email"]) if x)
     extra="   ".join(x for x in(p["website"],p["abn"] and "ABN "+p["abn"]) if x)
-    lines=[(p["provider_name"],"Helvetica-Bold",12,BLUE)]+[(t,"Helvetica",8,colors.HexColor("#444444")) for t in(addr,contact,extra) if t]
+    name_col,detail_col=(BLUE,colors.HexColor("#444444")) if p["text"] is None else (p["text"],p["text"])
+    lines=[(p["provider_name"],"Helvetica-Bold",12,name_col)]+[(t,"Helvetica",8,detail_col) for t in(addr,contact,extra) if t]
     fit=[]
     for t,font,size,col in lines:
         while size>5.5 and c.stringWidth(t,font,size)>right-left: size-=0.25   # shrink long lines to fit
@@ -127,7 +131,14 @@ class LogoError(BrandingError): pass
 class ProviderError(BrandingError): pass
 
 PROVIDER=None
-PROVIDER_COLS=["provider_name","addr1","addr2","addr3","phone","email","website","abn"]
+PROVIDER_COLS=["provider_name","addr1","addr2","addr3","phone","email","website","abn","bg_colour","text_colour"]
+HEX_RE=re.compile(r"#?([0-9a-fA-F]{6}|[0-9a-fA-F]{3})")
+def hex_colour(v,field,path):
+    """'#c11a6d', 'c11a6d' or '#fff' -> colour; blank -> None (use the default)."""
+    if not v: return None
+    m=HEX_RE.fullmatch(v)
+    if not m: raise ProviderError(f"Provider details error: {field} '{v}' in {path} isn't a hex colour. Use the form #c11a6d (or #ffffff for white).")
+    h=m.group(1); return colors.HexColor("#"+(h if len(h)==6 else "".join(ch*2 for ch in h)))
 def load_provider(folder=BRANDING):
     """Read branding/provider.csv (one row) for the page header. Missing = header without provider details;
     unusable = raise ProviderError. Returns the status line to show the user."""
@@ -142,6 +153,7 @@ def load_provider(folder=BRANDING):
     if not rows or "provider_name" not in rows[0]: raise ProviderError(f"Provider details error: {path} needs a provider_name column and one row of details.")
     p={k:(rows[0].get(k) or "").strip() for k in PROVIDER_COLS}
     if not p["provider_name"]: raise ProviderError(f"Provider details error: provider_name is empty in {path}.")
+    p["bg"]=hex_colour(p["bg_colour"],"bg_colour",path); p["text"]=hex_colour(p["text_colour"],"text_colour",path)
     PROVIDER=p; return f"Provider details OK: {p['provider_name']}"
 
 def load_logo(folder=BRANDING):
@@ -429,6 +441,7 @@ def validate_inputs(clients_csv,items_csv):
         elif not has_rows and cols is CLIENT_COLS: problems.append(f"The {label} has no clients in it: {path}")
     return problems
 
+PDF_DELAY_SECONDS=1   # pause between one statement and the next (0 = no pause)
 def run(clients_csv,items_csv,outdir,on_progress=None,cancel_event=None):
     """Build one statement per client. Bad rows are skipped and logged, not fatal.
     on_progress(info) is called after each statement; setting cancel_event stops after the current one.
@@ -444,6 +457,9 @@ def run(clients_csv,items_csv,outdir,on_progress=None,cancel_event=None):
     with open(log_path,"w",encoding="utf-8") as log:
         write_dashboard(outdir,results,total,started,True)
         for i,c in enumerate(clients,1):
+            if i>1 and PDF_DELAY_SECONDS:   # pause between statements; Cancel still stops straight away
+                if cancel_event is not None: cancel_event.wait(PDF_DELAY_SECONDS)
+                else: time.sleep(PDF_DELAY_SECONDS)
             if cancel_event is not None and cancel_event.is_set(): cancelled=True; break
             cid=c.get("client_id","?"); name=c.get("title_name","?")
             info=dict(index=i,total=total,client_id=cid,name=name)

@@ -65,7 +65,11 @@ It must be at least 300 x 300 pixels.
 Your business name, address and contact details at the top of every page come from
 `branding\provider.csv`. Open it in Excel, replace the sample details with yours (one row), and save it as
 **CSV UTF-8**. Only `provider_name` is required; leave any other column blank to hide it.
-Columns: `provider_name, addr1, addr2, addr3, phone, email, website, abn`.
+Columns: `provider_name, addr1, addr2, addr3, phone, email, website, abn, bg_colour, text_colour`.
+
+`bg_colour` is the colour of the bar at the top of each page and `text_colour` is the colour of your details on it.
+Write them as hex colour codes, for example `#c11a6d` (pink) and `#ffffff` (white). Leave both blank for a light grey bar.
+When you set `bg_colour`, your logo sits on a small white tile so it's easy to read on any colour.
 
 ## If something goes wrong
 
@@ -97,6 +101,7 @@ No logo at all? That's fine: remove the file from the `branding` folder and stat
 **"Provider details error: …"**
 Check `branding\provider.csv`: the first row must have the column names (including `provider_name`),
 the second row your details, and it must be saved as **CSV UTF-8**. Close it in Excel before creating statements.
+If it says a colour "isn't a hex colour", write it as `#` followed by 6 letters/numbers, e.g. `#c11a6d`.
 
 **"The clients file is missing these columns…"**
 You may have picked the wrong file, or a column was renamed. The first row must have the column names
